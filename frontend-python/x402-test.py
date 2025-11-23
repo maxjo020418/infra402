@@ -7,11 +7,9 @@ import asyncio
 import logging
 
 load_dotenv()
-pkey = os.getenv("PKEY")
-assert pkey
 
 # Initialize account
-account = Account.from_key(pkey)
+account = Account.from_key(os.getenv("PRIVATE_KEY"))
 
 logging.basicConfig(
     format="%(levelname)s [%(asctime)s] %(name)s - %(message)s",

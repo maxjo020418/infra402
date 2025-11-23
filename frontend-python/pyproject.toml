@@ -5,4 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 dependencies = [
     "coinbase-agentkit>=0.7.4",
+    "eth-account>=0.13.7",
+    "fastapi>=0.121.3",
+    "httpx>=0.28.1",
+    "pydantic-ai>=1.22.0",
+    "uvicorn>=0.38.0",
 ]
