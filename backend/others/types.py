@@ -6,14 +6,20 @@ from uuid import uuid4
 class LeaseRequest(BaseModel):
     sku: str
     runtimeMinutes: int
+    hostname: Optional[str] = None
+    cores: int = 1
+    memoryMB: int = 512
+    diskGB: int = 8
     requester: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
 
 class LeaseResponse(BaseModel):
     leaseId: str
     status: str
+    ctid: Optional[str] = None
     expiresAt: Optional[str] = None
     message: Optional[str] = None
+    ownerWallet: Optional[str] = None
 
 def build_lease_response(request: LeaseRequest) -> LeaseResponse:
     lease_id = f"{request.sku}-{uuid4().hex[:8]}"

@@ -4,7 +4,9 @@ from dataclasses import dataclass
 
 from eth_account import Account
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Literal
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -59,63 +61,94 @@ agent = Agent(
     ),
     deps_type=Deps,
     instructions=(
-        "You are a chatbot that can optionally fetch premium content "
-        "from an x402-protected endpoint.\n"
-        "- Only call the fetch_premium_content tool when the user explicitly "
-        "asks for premium or paid content.\n"
-        "- Otherwise answer normally.\n"
-        "- Explain briefly what you are doing when you use the tool."
+        "You are a chatbot that can create paid LXC leases via x402.\n"
+        "- Call the lease_container tool when the user asks to spin up or lease a container.\n"
+        "- Required fields: sku, runtimeMinutes. Ask for them if missing.\n"
+        "- Use defaults for cores/memoryMB/diskGB if not provided.\n"
+        "- Explain briefly when you submit a lease."
     ),
 )
 
 
 @agent.tool
-async def fetch_premium_content(ctx: RunContext[Deps]) -> str:
+async def lease_container(
+    ctx: RunContext[Deps],
+    sku: str,
+    runtimeMinutes: int,
+    cores: int = 1,
+    memoryMB: int = 512,
+    diskGB: int = 8,
+    hostname: str | None = None,
+    requester: str | None = None,
+) -> dict:
     """
-    Fetch premium content from the x402-protected endpoint
-    `http://localhost:4021/premium/content`.
+    Create a paid LXC lease via the x402-protected backend at `/lease/container`.
 
-    This tool will:
-    - Make an HTTP request to the endpoint.
-    - If the server returns HTTP 402 with x402 payment instructions,
-      the x402 client will automatically construct a payment,
-      sign it with the provided wallet, and retry the request.
-    - Return the response body as text.
+    Required:
+    - sku: product/plan id (e.g., "basic-lxc")
+    - runtimeMinutes: how long the lease should last
+
+    Optional:
+    - cores, memoryMB, diskGB, hostname, requester
+
+    Returns the backend LeaseResponse JSON, including `leaseId` and `ctid`.
     """
 
-    # Base URL without the path; the path is passed to .get()
-    base_url = "http://localhost:4021"
+    backend_url = os.getenv("BACKEND_BASE_URL", "http://localhost:4021").rstrip("/")
 
-    # x402HttpxClient wraps httpx.AsyncClient and handles the full x402 flow:​:contentReference[oaicite:3]{index=3}
-    # 1) initial request
-    # 2) detect 402 Payment Required
-    # 3) parse payment requirements
-    # 4) sign payment with ctx.deps.account
-    # 5) retry request with payment header
+    payload = {
+        "sku": sku,
+        "runtimeMinutes": runtimeMinutes,
+        "hostname": hostname,
+        "cores": cores,
+        "memoryMB": memoryMB,
+        "diskGB": diskGB,
+        "requester": requester,
+    }
+
+    # x402HttpxClient wraps httpx.AsyncClient and handles the 402 flow:
+    # 1) initial request, 2) detect 402, 3) parse payment instructions,
+    # 4) sign with ctx.deps.account, 5) retry with payment header.
     async with x402HttpxClient(
         account=ctx.deps.account,
-        base_url=base_url,
+        base_url=backend_url,
     ) as client:
-        resp = await client.get("/premium/content")
-        # Raise for non-2xx (after payment has been handled)
+        resp = await client.post("/lease/container", json=payload)
         resp.raise_for_status()
-
-        # Read the full body as bytes and decode as UTF-8 text
-        body_bytes = await resp.aread()
-        return body_bytes.decode("utf-8")
+        return resp.json()
 
 
 # ---------- FastAPI wrapper around the agent ----------
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
 
 class ChatRequest(BaseModel):
     message: str
+    history: list[ChatMessage] = []
 
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class InfoResponse(BaseModel):
+    base_url: str
+    model_name: str
+    api_key: str
 
 
 def build_deps() -> Deps:
@@ -130,24 +163,48 @@ def build_deps() -> Deps:
     return Deps(account=account)
 
 
+def build_prompt(message: str, history: list[ChatMessage]) -> str:
+    """
+    Convert chat history + new user message into a single prompt string
+    for the agent. We avoid relying on Agent history APIs to keep this
+    compatible with the current library version.
+    """
+    lines = [f"{m.role.upper()}: {m.content}" for m in history]
+    lines.append(f"USER: {message}")
+    return "\n".join(lines)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     deps = build_deps()
 
-    # Single-turn run; you can store and pass message history if you want a real chat.
+    prompt = build_prompt(req.message, req.history)
+
     result = await agent.run(
-        req.message,
+        prompt,
         deps=deps,
     )
 
     return ChatResponse(reply=result.output)
 
 
+@app.get("/info", response_model=InfoResponse)
+async def info() -> InfoResponse:
+    masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "****"
+    base_label = base_url if base_url is not None else "(default) openai"
+    return InfoResponse(
+        base_url=base_label,
+        model_name=model_name,
+        api_key=masked_key,
+    )
+
+
 # Test with
 """
+BACKEND_BASE_URL=http://localhost:4021 \
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Please fetch the premium content."}'
+  -d '{"message": "Lease a basic-lxc for 30 minutes with 2 cores and 2048 MB RAM."}'
 """
 
 if __name__ == "__main__":

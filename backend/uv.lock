@@ -2562,6 +2562,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "python-dotenv" },
     { name = "uvicorn" },
     { name = "x402" },
@@ -2570,6 +2571,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.109.0" },
+    { name = "httpx", specifier = ">=0.28.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "uvicorn", specifier = ">=0.27.0" },
     { name = "x402", editable = "x402" },
