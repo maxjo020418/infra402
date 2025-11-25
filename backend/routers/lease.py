@@ -5,7 +5,12 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
 from others.types import *
-from others.db import get_owner_by_ctid, record_container_lease
+from others.db import (
+    get_owner_by_ctid,
+    get_lease_by_ctid,
+    lease_is_expired,
+    record_container_lease,
+)
 from others.pve_client import (
     PVEError,
     create_lxc,
@@ -113,6 +118,26 @@ def _require_owner(ctid: str, payer: str) -> None:
         )
 
 
+def _require_active_lease(ctid: str, payer: str) -> dict:
+    lease = get_lease_by_ctid(ctid)
+    if not lease:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No lease found for this container",
+        )
+    if lease["owner_wallet"].lower() != payer.lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized for this container",
+        )
+    if lease_is_expired(lease):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Lease has expired",
+        )
+    return lease
+
+
 def _get_verified_payer(request: Request) -> str:
     verify: VerifyResponse | None = getattr(request.state, "verify_response", None)
     if verify is None or not verify.payer:
@@ -126,7 +151,7 @@ def _get_verified_payer(request: Request) -> str:
 @router.post("/{ctid}/command", response_model=ExecResponse)
 async def exec_command(ctid: str, body: ExecRequest, request: Request) -> ExecResponse:
     payer = _get_verified_payer(request)
-    _require_owner(ctid, payer)
+    _require_active_lease(ctid, payer)
     cfg = get_config()
 
     try:
@@ -143,7 +168,7 @@ async def exec_command(ctid: str, body: ExecRequest, request: Request) -> ExecRe
 @router.post("/{ctid}/console", response_model=ConsoleResponse)
 async def console(ctid: str, body: ConsoleRequest, request: Request) -> ConsoleResponse:
     payer = _get_verified_payer(request)
-    _require_owner(ctid, payer)
+    _require_active_lease(ctid, payer)
     cfg = get_config()
 
     if body.consoleType not in (None, "vnc", "spice"):

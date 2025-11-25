@@ -38,6 +38,8 @@ def PaywallConfig_builder(request: Request) \
             tier: str | None = request.query_params.get("tier")
             # temp setup
             return PaymentTemplate().model_dump()
+        case _ if path.startswith("/management"):
+            return PaymentTemplate().model_dump()
         case _ if path.startswith("/premium"):  # for testing
             return PaymentTemplate(price="$0.02").model_dump()
         case _:

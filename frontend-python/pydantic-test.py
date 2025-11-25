@@ -1,12 +1,12 @@
 import os
-from dotenv import load_dotenv
 from dataclasses import dataclass
+from typing import Any, Literal
 
+from dotenv import load_dotenv
 from eth_account import Account
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Literal
+from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -15,9 +15,9 @@ from x402.clients.httpx import x402HttpxClient  # async client with auto x402 pa
 
 # env importer
 load_dotenv()
-LLM_BASE_URL = os.getenv("LLM_PROVIDER")
-match LLM_BASE_URL:
-    case "flock.io":
+LLM_PROVIDER = os.getenv("LLM_PROVIDER")
+match LLM_PROVIDER:
+    case "flockio":
         base_url = "https://api.flock.io/v1"
         model_name = "qwen3-235b-a22b-instruct-2507"
         api_key = os.getenv("FLOCKIO_API_KEY")
@@ -62,12 +62,87 @@ agent = Agent(
     deps_type=Deps,
     instructions=(
         "You are a chatbot that can create paid LXC leases via x402.\n"
-        "- Call the lease_container tool when the user asks to spin up or lease a container.\n"
-        "- Required fields: sku, runtimeMinutes. Ask for them if missing.\n"
-        "- Use defaults for cores/memoryMB/diskGB if not provided.\n"
-        "- Explain briefly when you submit a lease."
+        "- Call lease_container to spin up or lease a container (required: sku, runtimeMinutes; use defaults otherwise).\n"
+        "- Call exec_container_command (management route) or exec_lease_command (lease route) to run commands on an existing container.\n"
+        "- Call open_container_console (management route) or open_lease_console (lease route) to request console access (ctid; consoleType optional, default vnc).\n"
+        "- Call list_managed_containers to see existing leases and their VM status.\n"
+        "- Call fetch_premium_content to retrieve premium HTML content when asked.\n"
+        "- Explain briefly when you submit a lease or run management actions."
     ),
 )
+
+
+def backend_base_url() -> str:
+    return os.getenv("BACKEND_BASE_URL", "http://localhost:4021").rstrip("/")
+
+
+class LeaseRequest(BaseModel):
+    sku: str
+    runtimeMinutes: int
+    hostname: str | None = None
+    cores: int = 1
+    memoryMB: int = 512
+    diskGB: int = 8
+    requester: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+class LeaseResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    leaseId: str
+    status: str
+    ctid: str | None = None
+    expiresAt: str | None = None
+    message: str | None = None
+    ownerWallet: str | None = None
+
+
+class ExecRequest(BaseModel):
+    command: str
+    extraArgs: list[str] | None = None
+
+
+class ExecResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    ctid: str
+    upid: str
+    output: str
+
+
+class ConsoleRequest(BaseModel):
+    consoleType: str | None = "vnc"
+
+
+class ConsoleResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    ctid: str
+    host: str
+    port: int
+    ticket: str
+    user: str
+    cert: str | None = None
+    websocket: int | None = None
+    proxy: str | None = None
+
+
+class ManagedContainer(BaseModel):
+    leaseId: str
+    ctid: str
+    status: str
+    expiresAt: str | None = None
+    network: str
+    createdAt: str
+    vmStatus: dict[str, Any] | None = None
+
+
+def _client(account: Account) -> x402HttpxClient:
+    return x402HttpxClient(
+        account=account,
+        base_url=backend_base_url(),
+    )
 
 
 @agent.tool
@@ -80,7 +155,7 @@ async def lease_container(
     diskGB: int = 8,
     hostname: str | None = None,
     requester: str | None = None,
-) -> dict:
+) -> LeaseResponse:
     """
     Create a paid LXC lease via the x402-protected backend at `/lease/container`.
 
@@ -94,28 +169,135 @@ async def lease_container(
     Returns the backend LeaseResponse JSON, including `leaseId` and `ctid`.
     """
 
-    backend_url = os.getenv("BACKEND_BASE_URL", "http://localhost:4021").rstrip("/")
+    payload = LeaseRequest(
+        sku=sku,
+        runtimeMinutes=runtimeMinutes,
+        hostname=hostname,
+        cores=cores,
+        memoryMB=memoryMB,
+        diskGB=diskGB,
+        requester=requester,
+    )
 
-    payload = {
-        "sku": sku,
-        "runtimeMinutes": runtimeMinutes,
-        "hostname": hostname,
-        "cores": cores,
-        "memoryMB": memoryMB,
-        "diskGB": diskGB,
-        "requester": requester,
-    }
-
-    # x402HttpxClient wraps httpx.AsyncClient and handles the 402 flow:
-    # 1) initial request, 2) detect 402, 3) parse payment instructions,
-    # 4) sign with ctx.deps.account, 5) retry with payment header.
-    async with x402HttpxClient(
-        account=ctx.deps.account,
-        base_url=backend_url,
-    ) as client:
-        resp = await client.post("/lease/container", json=payload)
+    async with _client(ctx.deps.account) as client:
+        resp = await client.post("/lease/container", json=payload.model_dump(exclude_none=True))
         resp.raise_for_status()
-        return resp.json()
+        return LeaseResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def exec_container_command(
+    ctx: RunContext[Deps],
+    ctid: str,
+    command: str,
+    extraArgs: list[str] | None = None,
+) -> ExecResponse:
+    """
+    Execute a command on a leased container via `/management/exec/{ctid}`.
+
+    Required:
+    - ctid: container ID
+    - command: command to run
+
+    Optional:
+    - extraArgs: list of extra CLI args
+    """
+    payload = ExecRequest(command=command, extraArgs=extraArgs)
+
+    async with _client(ctx.deps.account) as client:
+        resp = await client.post(f"/management/exec/{ctid}", json=payload.model_dump(exclude_none=True))
+        resp.raise_for_status()
+        return ExecResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def exec_lease_command(
+    ctx: RunContext[Deps],
+    ctid: str,
+    command: str,
+    extraArgs: list[str] | None = None,
+) -> ExecResponse:
+    """
+    Execute a command on a leased container via `/lease/{ctid}/command`.
+
+    Required:
+    - ctid: container ID
+    - command: command to run
+
+    Optional:
+    - extraArgs: list of extra CLI args
+    """
+    payload = ExecRequest(command=command, extraArgs=extraArgs)
+
+    async with _client(ctx.deps.account) as client:
+        resp = await client.post(f"/lease/{ctid}/command", json=payload.model_dump(exclude_none=True))
+        resp.raise_for_status()
+        return ExecResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def open_container_console(
+    ctx: RunContext[Deps],
+    ctid: str,
+    consoleType: str | None = "vnc",
+) -> ConsoleResponse:
+    """
+    Request console access for a leased container via `/management/console/{ctid}`.
+
+    Args:
+    - ctid: container ID
+    - consoleType: "vnc" (default) or "spice"
+    """
+    payload = ConsoleRequest(consoleType=consoleType)
+
+    async with _client(ctx.deps.account) as client:
+        resp = await client.post(f"/management/console/{ctid}", json=payload.model_dump(exclude_none=True))
+        resp.raise_for_status()
+        return ConsoleResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def open_lease_console(
+    ctx: RunContext[Deps],
+    ctid: str,
+    consoleType: str | None = "vnc",
+) -> ConsoleResponse:
+    """
+    Request console access for a leased container via `/lease/{ctid}/console`.
+
+    Args:
+    - ctid: container ID
+    - consoleType: "vnc" (default) or "spice"
+    """
+    payload = ConsoleRequest(consoleType=consoleType)
+
+    async with _client(ctx.deps.account) as client:
+        resp = await client.post(f"/lease/{ctid}/console", json=payload.model_dump(exclude_none=True))
+        resp.raise_for_status()
+        return ConsoleResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def list_managed_containers(ctx: RunContext[Deps]) -> list[ManagedContainer]:
+    """
+    Retrieve active and past leases via `/management/list`.
+    """
+    async with _client(ctx.deps.account) as client:
+        resp = await client.get("/management/list")
+        resp.raise_for_status()
+        raw_list = resp.json()
+        return [ManagedContainer.model_validate(item) for item in raw_list]
+
+
+@agent.tool
+async def fetch_premium_content(ctx: RunContext[Deps]) -> str:
+    """
+    Fetch premium content from `/premium/content`.
+    """
+    async with _client(ctx.deps.account) as client:
+        resp = await client.get("/premium/content")
+        resp.raise_for_status()
+        return resp.text
 
 
 # ---------- FastAPI wrapper around the agent ----------

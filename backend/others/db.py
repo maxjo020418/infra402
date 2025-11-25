@@ -1,9 +1,9 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Dict, Any, List
 
 # Simple SQLite-backed store for container leases and ownership
 DB_PATH = Path(os.getenv("LEASE_DB_PATH", "data/leases.db"))
@@ -90,3 +90,58 @@ def get_owner_by_ctid(ctid: str) -> Optional[str]:
             (ctid,),
         ).fetchone()
         return row["owner_wallet"] if row else None
+
+
+def get_lease_by_ctid(ctid: str) -> Optional[Dict[str, Any]]:
+    """Return full lease row for a container id."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM container_leases WHERE ctid = ?;",
+            (ctid,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_leases_by_owner(owner_wallet: str) -> List[Dict[str, Any]]:
+    """Return all leases for a given owner."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM container_leases WHERE owner_wallet = ?;",
+            (owner_wallet.lower(),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_all_leases() -> List[Dict[str, Any]]:
+    """Return all leases."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM container_leases;").fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_lease_status(lease_id: str, status: str) -> None:
+    """Update a lease status value."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE container_leases SET status = ? WHERE lease_id = ?;",
+            (status, lease_id),
+        )
+        conn.commit()
+
+
+def lease_is_expired(lease: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    """Determine if a lease has expired based on expires_at."""
+    expires_at = lease.get("expires_at")
+    if not expires_at:
+        return False
+    try:
+        expires_dt = datetime.fromisoformat(expires_at)
+    except ValueError:
+        return False
+    if expires_dt.tzinfo is None:
+        expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return expires_dt <= now

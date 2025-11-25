@@ -9,6 +9,7 @@ from others.require_payment_wrapper import (
     PaywallConfig_builder, 
     dynamic_require_payment
 )
+from others.lease_worker import start_lease_worker, stop_lease_worker
 
 # Load environment variables
 load_dotenv()
@@ -43,6 +44,18 @@ app.middleware("http")(dynamic_require_payment(PaywallConfig_builder))
 
 app.include_router(routers.premium_test.router)
 app.include_router(routers.lease.router)
+app.include_router(routers.management.router)
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    # Start background lease status refresher
+    start_lease_worker(app)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    await stop_lease_worker(app)
 
 if __name__ == "__main__":
     import uvicorn

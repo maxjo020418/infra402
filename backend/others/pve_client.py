@@ -171,18 +171,16 @@ async def create_lxc(
 async def run_command(
     cfg: PVEConfig, *, vmid: str, command: str, extra_args: Optional[List[str]] = None
 ) -> Dict[str, Any]:
-    form_data: List[tuple[str, Any]] = [
-        ("command", command),
-        ("tty", "0"),
-    ]
+    payload: Dict[str, Any] = {"command": command, "tty": "0"}
     if extra_args:
-        form_data.extend([("extra-args", arg) for arg in extra_args])
+        # Send repeated extra-args keys by using a list value for urlencoding.
+        payload["extra-args"] = extra_args
 
     resp = await _request(
         cfg,
         "POST",
         f"/nodes/{cfg.node}/lxc/{vmid}/exec",
-        data=form_data,
+        data=payload,
     )
     upid = resp.get("data")
     status = await wait_for_task(cfg, upid)
@@ -205,3 +203,23 @@ async def create_vnc_proxy(cfg: PVEConfig, *, vmid: str) -> Dict[str, Any]:
     )
     data = resp.get("data") or {}
     return data
+
+
+async def stop_lxc(cfg: PVEConfig, *, vmid: str) -> str:
+    """Stop a running LXC container."""
+    resp = await _request(
+        cfg,
+        "POST",
+        f"/nodes/{cfg.node}/lxc/{vmid}/status/stop",
+    )
+    return resp.get("data", "")
+
+
+async def get_lxc_status(cfg: PVEConfig, *, vmid: str) -> Dict[str, Any]:
+    """Fetch current LXC status."""
+    resp = await _request(
+        cfg,
+        "GET",
+        f"/nodes/{cfg.node}/lxc/{vmid}/status/current",
+    )
+    return resp.get("data") or {}
