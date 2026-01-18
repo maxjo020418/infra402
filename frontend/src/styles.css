@@ -306,3 +306,19 @@ code {
     font-size: 0.8rem;
   }
 }
+
+/* MiniApp Badge */
+.miniapp-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-left: 12px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+}
