@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="#1a1a2e"/>
+  <defs>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#df6e01"/>
+      <stop offset="100%" style="stop-color:#f49b3c"/>
+    </linearGradient>
+  </defs>
+  <rect x="50" y="50" width="100" height="100" rx="20" fill="url(#accent)"/>
+  <text x="100" y="108" font-family="system-ui, sans-serif" font-size="48" font-weight="700" fill="white" text-anchor="middle">i4</text>
+  <text x="100" y="132" font-family="system-ui, sans-serif" font-size="16" font-weight="500" fill="rgba(255,255,255,0.8)" text-anchor="middle">02</text>
+  <text x="100" y="180" font-family="system-ui, sans-serif" font-size="12" font-weight="400" fill="rgba(255,255,255,0.5)" text-anchor="middle">Loading...</text>
+</svg>

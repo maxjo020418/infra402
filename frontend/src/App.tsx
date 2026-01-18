@@ -1,6 +1,7 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { sdk } from "@farcaster/miniapp-sdk";
 
 type ChatMessage = {
   id: string;
@@ -43,6 +44,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
+  const [isMiniApp, setIsMiniApp] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesRef = useRef<HTMLElement | null>(null);
 
@@ -50,6 +52,34 @@ function App() {
     () => Boolean(input.trim()) && !loading,
     [input, loading],
   );
+
+  // Initialize Farcaster MiniApp SDK
+  // This must be called as soon as possible to hide the splash screen
+  useEffect(() => {
+    const initMiniApp = async () => {
+      try {
+        // Check if running inside a Farcaster client
+        if (sdk.isInMiniApp()) {
+          setIsMiniApp(true);
+          // Signal to the client that the app is ready to be displayed
+          await sdk.actions.ready();
+
+          // Apply safe area insets from the client context
+          const context = sdk.context;
+          if (context?.client?.safeAreaInsets) {
+            const { top, bottom, left, right } = context.client.safeAreaInsets;
+            document.documentElement.style.setProperty("--safe-area-top", `${top}px`);
+            document.documentElement.style.setProperty("--safe-area-bottom", `${bottom}px`);
+            document.documentElement.style.setProperty("--safe-area-left", `${left}px`);
+            document.documentElement.style.setProperty("--safe-area-right", `${right}px`);
+          }
+        }
+      } catch (err) {
+        console.warn("MiniApp SDK initialization failed:", err);
+      }
+    };
+    initMiniApp();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +190,10 @@ function App() {
     <div className="page">
       <header className="hero">
         <div>
-          <h1>Infra402</h1>
+          <h1>
+            Infra402
+            {isMiniApp && <span className="miniapp-badge">MiniApp</span>}
+          </h1>
           <p className="lede">
             Chat with your agent to explore infra402 :D<br></br>Provision containers and pay using x402! Cheap and accessible~
           </p>

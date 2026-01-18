@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#df6e01"/>
+      <stop offset="100%" style="stop-color:#f49b3c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg-grad)"/>
+
+  <!-- Decorative elements -->
+  <circle cx="1100" cy="100" r="200" fill="rgba(223,110,1,0.1)"/>
+  <circle cx="100" cy="530" r="150" fill="rgba(244,155,60,0.08)"/>
+
+  <!-- Icon -->
+  <rect x="100" y="200" width="140" height="140" rx="28" fill="url(#accent-grad)"/>
+  <text x="170" y="280" font-family="system-ui, sans-serif" font-size="64" font-weight="700" fill="white" text-anchor="middle">i4</text>
+  <text x="170" y="320" font-family="system-ui, sans-serif" font-size="20" font-weight="500" fill="rgba(255,255,255,0.8)" text-anchor="middle">02</text>
+
+  <!-- Title -->
+  <text x="280" y="260" font-family="system-ui, sans-serif" font-size="72" font-weight="700" fill="white">Infra402</text>
+  <text x="280" y="320" font-family="system-ui, sans-serif" font-size="28" font-weight="400" fill="rgba(255,255,255,0.7)">x402 Payment Infrastructure</text>
+
+  <!-- Description -->
+  <text x="100" y="440" font-family="system-ui, sans-serif" font-size="24" font-weight="400" fill="rgba(255,255,255,0.6)">Chat with an AI agent to provision LXC containers</text>
+  <text x="100" y="480" font-family="system-ui, sans-serif" font-size="24" font-weight="400" fill="rgba(255,255,255,0.6)">and pay using x402 protocol</text>
+
+  <!-- Badge -->
+  <rect x="100" y="540" width="140" height="36" rx="18" fill="url(#accent-grad)"/>
+  <text x="170" y="565" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="white" text-anchor="middle">Base MiniApp</text>
+</svg>

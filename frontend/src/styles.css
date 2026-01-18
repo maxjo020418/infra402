@@ -2,6 +2,11 @@
   --accent: #df6e01;
   --accent-strong: #c45f00;
   --muted: #f2f2f2;
+  /* Safe area insets - set by MiniApp SDK or fallback to env() */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
   font-family: "Manrope", system-ui, -apple-system, sans-serif;
   color: #0a0a0a;
   background: #ffffff;
@@ -29,7 +34,7 @@ code {
 .page {
   max-width: 960px;
   margin: 0 auto;
-  padding: 32px 20px 56px;
+  padding: calc(32px + var(--safe-area-top)) calc(20px + var(--safe-area-right)) calc(56px + var(--safe-area-bottom)) calc(20px + var(--safe-area-left));
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -305,4 +310,20 @@ code {
     height: 36px;
     font-size: 0.8rem;
   }
+}
+
+/* MiniApp Badge */
+.miniapp-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-left: 12px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
 }

@@ -1,0 +1,25 @@
+{
+  "accountAssociation": {
+    "header": "PLACEHOLDER_HEADER",
+    "payload": "PLACEHOLDER_PAYLOAD",
+    "signature": "PLACEHOLDER_SIGNATURE"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Infra402",
+    "subtitle": "x402 Payment Infrastructure",
+    "description": "Chat with an AI agent to provision LXC containers and pay using x402 protocol. Cheap and accessible infrastructure leasing.",
+    "iconUrl": "https://infra402.vercel.app/icon.svg",
+    "homeUrl": "https://infra402.vercel.app",
+    "imageUrl": "https://infra402.vercel.app/og-image.svg",
+    "buttonTitle": "Launch",
+    "splashImageUrl": "https://infra402.vercel.app/splash.svg",
+    "splashBackgroundColor": "#1a1a2e",
+    "primaryCategory": "developer-tools",
+    "tags": ["x402", "infrastructure", "ai-agent", "payments"],
+    "requiredChains": ["eip155:84532"],
+    "requiredCapabilities": [
+      "actions.ready"
+    ]
+  }
+}
