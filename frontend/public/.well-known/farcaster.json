@@ -1,0 +1,26 @@
+{
+    "accountAssociation": {
+        "header": "",
+        "payload": "",
+        "signature": ""
+    },
+    "miniapp": {
+        "version": "1",
+        "name": "Infra402",
+        "homeUrl": "https://infra402.vercel.app",
+        "iconUrl": "https://infra402.vercel.app/icon.png",
+        "splashImageUrl": "https://infra402.vercel.app/splash.png",
+        "splashBackgroundColor": "#1a1a2e",
+        "subtitle": "LXC Container Provisioning",
+        "description": "Chat with an AI agent to provision LXC containers using x402 payments. Cheap and accessible infrastructure on demand.",
+        "primaryCategory": "developer_tools",
+        "tags": [
+            "infrastructure",
+            "containers",
+            "x402",
+            "ai"
+        ],
+        "tagline": "Provision containers with AI & x402",
+        "noindex": false
+    }
+}

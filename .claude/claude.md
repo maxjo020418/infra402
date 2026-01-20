@@ -62,3 +62,34 @@ VITE_CHAT_API_BASE=https://backend-services.tailnet-xxxx.ts.net
 1. **LXC nesting**: Tailscale 작동을 위해 `--features nesting=1` 필수
 2. **Ports**: backend-llm:8000, backend-proxmox:4021
 3. **Secrets**: `.env` 파일은 Git에 커밋 금지
+
+---
+
+## 🚀 Base App Migration
+
+[Migration Guide](https://github.com/Basten1209/base_app_migration/blob/main/BASE_APP_MIGRATION_GUIDE.md)
+
+### Quick Steps
+1. **SDK 설치**: `pnpm add @farcaster/miniapp-sdk`
+2. **App Ready**: `App.tsx`에 `sdk.actions.ready()` 추가
+3. **Manifest 생성**: `public/.well-known/farcaster.json`
+4. **Account Association**: [Base Build Tool](https://www.base.dev/preview?tab=account)에서 서명
+5. **Embed Metadata**: `index.html`에 `fc:miniapp` 메타 태그 추가
+
+### Account Association (Ownership 주의)
+- **전용 지갑 사용 권장**: 개인 지갑 대신 앱 전용 지갑으로 서명
+- Base Build Tool에서 URL 입력 → 지갑 서명 → `header`, `payload`, `signature` 복사
+- `farcaster.json`에 값 입력
+
+### Manifest Example
+```json
+{
+  "accountAssociation": { "header": "", "payload": "", "signature": "" },
+  "miniapp": {
+    "version": "1",
+    "name": "Infra402",
+    "homeUrl": "https://your-domain.vercel.app",
+    "iconUrl": "https://your-domain.vercel.app/icon.png"
+  }
+}
+```

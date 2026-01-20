@@ -7,6 +7,9 @@
 - [ ] Step 3: 기본 환경 설정
 - [ ] Step 4: Tailscale 설치
 - [ ] Step 5: Backend 배포
+- [ ] Step 6: Tailscale Funnel 오픈
+- [ ] Step 7: Vercel 환경변수 설정
+- [ ] Step 8: Vercel 재배포 및 테스트
 
 ---
 
@@ -51,7 +54,7 @@ apt install -y python3.11 python3-pip git curl
 
 # uv 설치
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+source ~/.bashrc  # PATH 적용 필수!
 ```
 
 ---
@@ -67,12 +70,6 @@ tailscale up
 
 # 상태 확인
 tailscale status
-
-# 공개 URL 생성 (8000 포트)
-tailscale funnel 8000
-
-# Funnel URL 확인
-tailscale funnel status
 ```
 
 ---
@@ -82,7 +79,7 @@ tailscale funnel status
 ```bash
 # 레포지토리 클론
 cd /opt
-git clone <your-repo-url> infra402
+git clone https://github.com/maxjo020418/infra402.git
 cd infra402
 
 # backend-proxmox 환경변수
@@ -95,16 +92,55 @@ cd ../backend-llm
 cp .example.env .env
 nano .env  # OPENAI_API_KEY, PRIVATE_KEY 등 설정
 
-# 서비스 실행
+# 서비스 실행 (순서 중요: proxmox 먼저!)
 cd /opt/infra402/backend-proxmox && uv sync && uv run python main.py &
 cd /opt/infra402/backend-llm && uv sync && uv run python pydantic-server.py &
 ```
 
 ---
 
-## Vercel 설정
+## Step 6: Tailscale Funnel 오픈
 
-Funnel URL 확인 후 Vercel Dashboard에서 환경변수 설정:
+```bash
+# 8000 포트 공개
+tailscale funnel 8000
+
+# Funnel URL 확인 → 복사해두기!
+tailscale funnel status
+# 출력 예: https://backend-services.tail12345.ts.net
 ```
-VITE_CHAT_API_BASE=https://backend-services.tailnet-xxxx.ts.net
-```
+
+---
+
+## Step 7: Vercel 환경변수 설정
+
+1. [vercel.com/dashboard](https://vercel.com/dashboard) 접속
+2. **infra402** 프로젝트 선택
+3. **Settings** → **Environment Variables**
+4. 추가:
+   - **Name**: `VITE_CHAT_API_BASE`
+   - **Value**: `https://backend-services.tail12345.ts.net` (Step 6에서 확인한 URL)
+5. **Save**
+
+---
+
+## Step 8: Vercel 재배포 및 테스트
+
+**재배포:**
+- Vercel Dashboard → Deployments → 최신 배포 → ⋯ → **Redeploy**
+
+**테스트:**
+1. `https://infra402.vercel.app` 접속
+2. 챗봇 UI에서 메시지 전송
+3. 응답 확인
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| uv: command not found | `source ~/.bashrc` 실행 |
+| API Key 에러 | `.env` 파일 확인 |
+| Funnel 안됨 | `tailscale funnel 8000` 재실행 |
+| CORS 에러 | backend-llm CORS 설정 확인 |

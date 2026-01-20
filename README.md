@@ -4,8 +4,8 @@ Infrastructure leasing demo built around `x402` payments.
 
 This repo contains three services:
 - `backend-proxmox/`: FastAPI paywalled API that provisions and manages Proxmox LXC containers (port `4021`).
-- `backend-llm/`: FastAPI chat agent that calls the paywalled API and automatically signs `x402` payments (port `8000`).
-- `frontend/`: Vite + React UI that calls the agent service (port `3000`).
+- `backend-llm/`: FastAPI chat agent that calls the paywalled API. It acts as an orchestrator but delegates payment signing to the client (port `8000`).
+- `frontend/`: Vite + React UI that calls the agent service and handles crypto payments via wallet connection (port `3000`).
 
 ## Requirements
 
@@ -15,7 +15,8 @@ This repo contains three services:
 - `pnpm`
 - Proxmox VE host + API token (to actually create/manage containers)
 - An EVM address to receive payments (paywall configuration)
-- An EVM private key (used by the agent to sign `x402` payment headers)
+- A browser wallet (e.g., Coinbase Wallet) for the client-side user
+- Coinbase Developer Platform API Key (for OnchainKit in the frontend)
 
 ## Configuration
 
@@ -36,7 +37,6 @@ See `backend-proxmox/PROXMOX_API_USAGE.md` for the expected Proxmox-side permiss
 ### `backend-llm` (agent API)
 
 Create `backend-llm/.env` (start from `backend-llm/.example.env`) and set:
-- `PRIVATE_KEY`: EVM private key used to sign `x402` payment headers
 - `LLM_PROVIDER`: `openai` or `flockio`
 - If `LLM_PROVIDER=openai`: `OPENAI_API_KEY`
 - If `LLM_PROVIDER=flockio`: `FLOCKIO_API_KEY`
@@ -49,6 +49,8 @@ Note: `backend-llm/.example.env` may not list all currently used variables; the 
 Create `frontend/.env` with:
 ```
 VITE_CHAT_API_BASE=http://localhost:8000
+VITE_ONCHAINKIT_API_KEY=your_cdp_api_key
+VITE_DEFAULT_NETWORK=base-sepolia
 ```
 
 ## Run (local)
@@ -78,7 +80,7 @@ pnpm dev  # http://localhost:3000
 
 Agent service (no payment required):
 - `GET /info`: returns the configured LLM base URL + model name (and a masked API key)
-- `POST /chat`: chat endpoint; the agent can call paid tools to manage leases
+- `POST /chat`: chat endpoint; the agent can call paid tools to manage leases. Returns a `payment_request` object if 402 is encountered.
 
 Paywalled Proxmox service (`x402` payment required):
 - `POST /lease/container`
@@ -92,4 +94,4 @@ For request/response examples and the payment flow, see `backend-proxmox/API_USA
 ## Notes
 
 - Secrets belong in `.env` files and should not be committed.
-- The agent is the intended local client: it uses `x402HttpxClient` to automatically handle `402 Payment Required` challenges and attach signed `X-PAYMENT` headers.
+- The **frontend** is the entity that signs the payment headers using the connected wallet. The agent backend merely facilitates the negotiation.

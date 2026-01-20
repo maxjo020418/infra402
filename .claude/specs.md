@@ -2,171 +2,254 @@
 
 ## Architecture Overview
 
-Mini PC (Proxmox) + Tailscale + Vercel 배포 아키텍처
-
-```mermaid
-graph TB
-    subgraph Internet["🌐 Internet"]
-        User([👤 User])
-        Vercel[Vercel Frontend]
-    end
-    
-    subgraph MiniPC["🖥️ Mini PC - Proxmox Host"]
-        subgraph LXC["LXC: backend-services"]
-            Tailscale[Tailscale Client]
-            Backend_LLM[backend-llm :8000]
-            Backend_Proxmox[backend-proxmox :4021]
-        end
-        
-        Sandbox[Sandbox Zone<br/>User Containers]
-        PVE_API[Proxmox API :8006]
-    end
-
-    User --> Vercel
-    Vercel -->|Tailscale Funnel| Tailscale
-    Tailscale --> Backend_LLM
-    Backend_LLM --> Backend_Proxmox
-    Backend_Proxmox --> PVE_API
-    PVE_API --> Sandbox
-```
-
-### LXC Specifications
-
-| 컨테이너 | CPU | RAM | Disk | 서비스 |
-|----------|-----|-----|------|--------|
-| backend-services | 2 Core | 2GB | 20GB | backend-llm, backend-proxmox, Tailscale |
-
-### Network Flow
-
-1. User → Vercel Frontend (Static)
-2. Frontend → Tailscale Funnel URL (HTTPS)
-3. Tailscale → backend-services LXC :8000
-4. backend-llm → backend-proxmox :4021 (localhost)
-5. backend-proxmox → Proxmox API → User Container 생성
-
----
-
-## Required Accounts & Resources
-
-| 항목 | 용도 | 필수 여부 |
-|------|------|----------|
-| **Vercel 계정** | Frontend 배포 | ✅ 필수 |
-| **Cloudflare 계정** | Tunnel + 도메인 관리 | ✅ 필수 |
-| **도메인** | `api.mydomain.com` 용 | ✅ 필수 (Cloudflare에 연결) |
-| **OpenAI API Key** | LLM Provider (기본값) | 🔄 택1 |
-| **Flock.io API Key** | LLM Provider (대안) | 🔄 택1 |
-| **EVM Wallet Private Key** | x402 결제 서명용 | ✅ 필수 |
-| **Proxmox 접근권한** | 컨테이너 관리 | ✅ 필수 |
-
-> [!NOTE]
-> LLM Provider는 OpenAI 또는 Flock.io 중 하나만 선택하면 됩니다.
-> - OpenAI 사용 시: `LLM_PROVIDER=openai` + `OPENAI_API_KEY`
-> - Flock.io 사용 시: `LLM_PROVIDER=flockio` + `FLOCKIO_API_KEY`
-
----
-
-## Repository Structure
+Mini PC (Proxmox) + Tailscale + Vercel
 
 ```
-infra402/
-├── frontend/              # Vite + React (TypeScript)
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-├── backend-llm/           # FastAPI Agent Service (Port 8000)
-│   ├── pydantic-server.py
-│   └── pyproject.toml
-├── backend-proxmox/       # FastAPI Paywall Server (Port 4021)
-│   ├── main.py
-│   ├── routers/
-│   └── pyproject.toml
-└── .claude/               # Deployment Documentation
-    ├── claude.md          # AI Agent Instructions
-    ├── specs.md           # This File
-    ├── plan.md            # Implementation Plan
-    └── task.md            # Task Tracking
+┌─────────────────────────────────────────────────────────────────┐
+│  🌐 Internet                                                    │
+│                                                                 │
+│  👤 User  →  Vercel Frontend (infra402.vercel.app)             │
+│                      │                                          │
+│                      │ HTTPS                                    │
+│                      ▼                                          │
+│              Tailscale Funnel                                   │
+│         (backend-service.tailXXX.ts.net)                        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           │ Encrypted Tunnel
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  🖥️ Mini PC - Proxmox Host                                      │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  LXC 100: backend-services                                │  │
+│  │                                                           │  │
+│  │  ┌─────────────────┐                                     │  │
+│  │  │ Tailscale       │                                     │  │
+│  │  │ Client          │                                     │  │
+│  │  └────────┬────────┘                                     │  │
+│  │           │                                               │  │
+│  │           ▼                                               │  │
+│  │  ┌─────────────────┐      ┌──────────────────┐          │  │
+│  │  │ backend-llm     │─────→│ backend-proxmox  │          │  │
+│  │  │ :8000           │      │ :4021            │          │  │
+│  │  └─────────────────┘      └────────┬─────────┘          │  │
+│  └───────────────────────────────────┼────────────────────┘  │
+│                                       │                       │
+│                                       ▼                       │
+│                              ┌────────────────┐               │
+│                              │ Proxmox API    │               │
+│                              │ :8006          │               │
+│                              └────────┬───────┘               │
+│                                       │                       │
+│                                       ▼                       │
+│                              ┌────────────────┐               │
+│                              │ User Containers│               │
+│                              │ (Sandbox)      │               │
+│                              └────────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Component Specifications
+## Components
 
-### 1. Frontend (Vercel)
+### LXC Container
+| 항목 | 값 |
+|------|-----|
+| ID | 100 |
+| Hostname | backend-services |
+| CPU | 2 Cores |
+| RAM | 2GB |
+| Disk | 20GB |
+| Features | nesting=1 (Tailscale 필수) |
 
-| Item | Value |
-|------|-------|
-| Framework | Vite + React + TypeScript |
-| Build Command | `pnpm build` |
-| Output Dir | `dist` |
-| Root Directory | `frontend` |
-| Node Version | 18.x |
+### Services
+| Service | Port | 용도 |
+|---------|------|------|
+| backend-llm | 8000 | LLM 챗봇 API |
+| backend-proxmox | 4021 | 컨테이너 관리 API |
 
-**Environment Variables:**
-| Variable | Example Value | Description |
-|----------|---------------|-------------|
-| `VITE_CHAT_API_BASE` | `https://api.mydomain.com` | Backend API endpoint via Cloudflare Tunnel |
-
----
-
-### 2. Backend LLM Service (Local)
-
-| Item | Value |
-|------|-------|
-| Framework | FastAPI + Pydantic-AI |
-| Port | 8000 |
-| Entry Point | `pydantic-server.py` |
-| Endpoints | `/chat`, `/info` |
-
-**Environment Variables:**
-| Variable | Description |
-|----------|-------------|
-| `LLM_PROVIDER` | `openai` or `flockio` |
-| `OPENAI_API_KEY` | OpenAI API key (if using openai) |
-| `FLOCKIO_API_KEY` | Flock.io API key (if using flockio) |
-| `PRIVATE_KEY` | EVM wallet private key for x402 |
-| `BACKEND_BASE_URL` | `http://localhost:4021` |
-
-**CORS Configuration:** Must allow `https://infra402.vercel.app`
+### Network
+- **Tailscale Funnel**: `https://backend-service.tailXXXXX.ts.net`
+- **Vercel**: `https://infra402.vercel.app`
 
 ---
 
-### 3. Backend Proxmox Service (Local)
+## Environment Variables
 
-| Item | Value |
-|------|-------|
-| Framework | FastAPI |
-| Port | 4021 |
-| Endpoints | `/lease/*`, `/management/*` |
+### Backend-LLM
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+PRIVATE_KEY=0x...
+BACKEND_BASE_URL=http://localhost:4021
+```
 
----
+### Backend-Proxmox
+```env
+ADDRESS=0x...
+NETWORK=base-sepolia
+PVE_HOST=https://localhost:8006
+PVE_TOKEN_ID=root@pam!token
+PVE_TOKEN_SECRET=...
+PVE_NODE=pve
+PVE_STORAGE=local-lvm
+PVE_OS_TEMPLATE=local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst
+```
 
-### 4. Cloudflare Tunnel
-
-| Item | Value |
-|------|-------|
-| Daemon | `cloudflared` |
-| Public Hostname | `api.mydomain.com` (user-defined) |
-| Service Target | `http://localhost:8000` |
-| Protocol | HTTPS (automatic SSL) |
-
----
-
-## Network Flow
-
-1. **User → Vercel**: Static frontend 로드 (https://infra402.vercel.app)
-2. **User → Cloudflare**: API 요청 (https://api.mydomain.com)
-3. **Cloudflare → cloudflared**: 암호화된 gRPC 터널
-4. **cloudflared → Backend**: localhost:8000으로 프록시
-5. **Backend-LLM → Backend-Proxmox**: 내부 API 호출 (localhost:4021)
+### Vercel
+```env
+VITE_CHAT_API_BASE=https://backend-service.tailXXXXX.ts.net
+```
 
 ---
 
-## Constraints & Prerequisites
+## Base App MiniApp Integration
 
-> [!CAUTION]
-> MacBook이 백엔드 서버이므로 **Sleep Mode 방지**를 수동으로 설정해야 합니다.
+### Overview
+Frontend를 Farcaster Base App의 MiniApp으로 출시하여 Base 생태계에서 실행 가능하도록 합니다.
 
-- MacBook은 항상 켜져 있어야 함 (Prevent Sleep)
-- 안정적인 인터넷 연결 필요
-- Local LLM 모델 및 Proxmox 노드 접근 필요
-- Cloudflare 계정 및 도메인 필요
+### 1. SDK Integration
+
+**패키지 설치:**
+```bash
+pnpm add @farcaster/miniapp-sdk
+```
+
+**App.tsx 수정:**
+```typescript
+import { sdk } from '@farcaster/miniapp-sdk';
+import { useEffect } from 'react';
+
+function App() {
+  useEffect(() => {
+    sdk.actions.ready();  // 앱 로딩 완료 알림
+  }, []);
+  // ...
+}
+```
+
+---
+
+### 2. Manifest 파일 생성
+
+**경로:** `public/.well-known/farcaster.json`
+
+```json
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Infra402",
+    "homeUrl": "https://infra402.vercel.app",
+    "iconUrl": "https://infra402.vercel.app/icon.png",
+    "splashImageUrl": "https://infra402.vercel.app/splash.png",
+    "splashBackgroundColor": "#1a1a2e",
+    "subtitle": "LXC Container Provisioning",
+    "description": "Chat with an AI agent to provision LXC containers using x402 payments.",
+    "primaryCategory": "developer_tools",
+    "tags": ["infrastructure", "containers", "x402", "ai"],
+    "tagline": "Provision containers with AI & x402"
+  }
+}
+```
+
+---
+
+### 3. Embed Metadata 추가
+
+**index.html `<head>` 섹션:**
+```html
+<meta name="fc:miniapp" content='{
+  "version":"next",
+  "imageUrl":"https://infra402.vercel.app/embed.png",
+  "button":{
+    "title":"Launch Infra402",
+    "action":{
+      "type":"launch_miniapp",
+      "name":"Infra402",
+      "url":"https://infra402.vercel.app"
+    }
+  }
+}' />
+```
+
+---
+
+### 4. Account Association (중요)
+
+> **Ownership 주의:** 서명한 지갑이 앱의 소유자가 됩니다.
+
+**절차:**
+1. **전용 지갑 생성** (개인 지갑과 분리 권장)
+2. [Base Build Tool](https://www.base.dev/preview?tab=account) 접속
+3. 배포된 URL 입력: `infra402.vercel.app`
+4. "Verify" 클릭 → 지갑 서명
+5. 생성된 `header`, `payload`, `signature` 복사
+6. `farcaster.json`의 `accountAssociation`에 값 입력
+
+**예시:**
+```json
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4...",
+    "payload": "eyJkb21haW4iOiJpbmZyYTQwMi52ZXJjZWwuYXBwIn0",
+    "signature": "0x1234567890abcdef..."
+  }
+}
+```
+
+---
+
+### 5. 배포 및 검증
+
+**Vercel 재배포:**
+```bash
+git add .
+git commit -m "feat: Add Base App MiniApp integration"
+git push origin main
+```
+
+**검증:**
+1. [Base Build Preview](https://www.base.dev/preview) 접속
+2. URL 입력: `infra402.vercel.app`
+3. 확인 항목:
+   - ✅ Embed Preview (카드 표시)
+   - ✅ Launch Button (앱 실행)
+   - ✅ Account Association (서명 검증)
+   - ✅ Metadata (모든 필드 표시)
+
+---
+
+### 6. 앱 퍼블리싱
+
+**Base App에서:**
+1. Base App (모바일) 열기
+2. 새 포스트 작성
+3. 앱 URL 포함: `https://infra402.vercel.app`
+4. 게시
+
+→ 앱이 Base App에 등록되고 사용자들이 발견 가능
+
+---
+
+### Troubleshooting
+
+| 문제 | 해결 |
+|------|------|
+| SDK 오류 | `@farcaster/miniapp-sdk` 설치 확인 |
+| Manifest 로드 실패 | `.well-known/farcaster.json` 경로 확인 |
+| Account Association 실패 | 배포 URL과 서명 URL 일치 확인 |
+| CORS 에러 | Vercel 도메인 허용 확인 |
+
+---
+
+### Reference
+- [공식 마이그레이션 가이드](.claude/BASE_APP_MIGRATION_GUIDE.md)
+- [Base Build Tool](https://www.base.dev/preview)
+- [Farcaster Docs](https://docs.farcaster.xyz/)
+

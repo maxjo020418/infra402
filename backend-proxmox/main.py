@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import os
 
 from dotenv import load_dotenv
@@ -22,7 +23,15 @@ CDP_CLIENT_KEY = os.getenv("CDP_CLIENT_KEY")
 if not ADDRESS:
     raise ValueError("Missing required environment variables")
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start background lease status refresher
+    start_lease_worker(app)
+    yield
+    # Stop background lease status refresher
+    await stop_lease_worker(app)
+
+app = FastAPI(lifespan=lifespan)
 
 # Allow local frontend to call this API directly
 app.add_middleware(
@@ -45,16 +54,6 @@ app.middleware("http")(dynamic_require_payment(PaywallConfig_builder))
 app.include_router(routers.lease.router)
 app.include_router(routers.management.router)
 
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # Start background lease status refresher
-    start_lease_worker(app)
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    await stop_lease_worker(app)
 
 if __name__ == "__main__":
     import uvicorn
