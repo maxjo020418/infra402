@@ -21,6 +21,7 @@ const wagmiConfig = createConfig({
   connectors: [
     coinbaseWallet({
       appName: 'Infra402',
+      preference: 'all', // Force Coinbase wallet, override other extensions
     }),
   ],
   transports: {
