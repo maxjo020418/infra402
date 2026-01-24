@@ -78,6 +78,7 @@ agent = Agent(
         "- Call exec_container_command (management route) or exec_lease_command (lease route) to run commands on an existing container.\n"
         "- Call open_container_console to request console access via the management route (ctid; consoleType optional, default vnc). open_lease_console is a backward-compatible alias.\n"
         "- Call list_managed_containers to see existing leases and their VM status.\n"
+        "- Call get_node_stats or list_lxc_stats to fetch free usage stats (provide wallet header if required).\n"
         "- Explain briefly when you submit a lease or run management actions."
     ),
 )
@@ -156,6 +157,37 @@ class ManagedContainer(BaseModel):
     vmStatus: dict[str, Any] | None = None
 
 
+class UsageStats(BaseModel):
+    used: int | None = None
+    total: int | None = None
+    free: int | None = None
+    pct: float | None = None
+
+
+class CpuStats(BaseModel):
+    usage: float | None = None
+    cores: int | None = None
+    pct: float | None = None
+
+
+class NodeStatsResponse(BaseModel):
+    node: str
+    cpu: CpuStats
+    memory: UsageStats
+    disk: UsageStats
+
+
+class LxcStats(BaseModel):
+    leaseId: str
+    ctid: str
+    sku: str | None = None
+    status: str | None = None
+    cpu: CpuStats | None = None
+    memory: UsageStats | None = None
+    disk: UsageStats | None = None
+    error: str | None = None
+
+
 def _client(deps: Deps) -> httpx.AsyncClient:
     """
     Create a standard httpx client.
@@ -170,6 +202,15 @@ def _client(deps: Deps) -> httpx.AsyncClient:
         headers=headers,
         timeout=60.0,
     )
+
+
+def _headers_with_wallet(deps: Deps, wallet: str | None) -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+    if deps.payment_headers:
+        headers.update(deps.payment_headers)
+    if wallet:
+        headers["X-Wallet"] = wallet
+    return headers
 
 async def _check_response(resp: httpx.Response):
     """
@@ -393,6 +434,51 @@ async def list_managed_containers(ctx: RunContext[Deps]) -> list[ManagedContaine
         await _check_response(resp)
         raw_list = resp.json()
         return [ManagedContainer.model_validate(item) for item in raw_list]
+
+
+@agent.tool
+async def get_node_stats(
+    ctx: RunContext[Deps],
+    wallet: str | None = None,
+) -> NodeStatsResponse:
+    """
+    Fetch node CPU/RAM/disk usage via `/stats/node`.
+
+    Optional:
+    - wallet: address to send via X-Wallet header for mock auth
+    """
+    headers = _headers_with_wallet(ctx.deps, wallet)
+    async with httpx.AsyncClient(
+        base_url=backend_base_url(),
+        headers=headers,
+        timeout=60.0,
+    ) as client:
+        resp = await client.get("/stats/node")
+        await _check_response(resp)
+        return NodeStatsResponse.model_validate(resp.json())
+
+
+@agent.tool
+async def list_lxc_stats(
+    ctx: RunContext[Deps],
+    wallet: str | None = None,
+) -> list[LxcStats]:
+    """
+    Fetch CPU/RAM/disk usage for owned containers via `/stats/lxc`.
+
+    Optional:
+    - wallet: address to send via X-Wallet header for mock auth
+    """
+    headers = _headers_with_wallet(ctx.deps, wallet)
+    async with httpx.AsyncClient(
+        base_url=backend_base_url(),
+        headers=headers,
+        timeout=60.0,
+    ) as client:
+        resp = await client.get("/stats/lxc")
+        await _check_response(resp)
+        raw_list = resp.json()
+        return [LxcStats.model_validate(item) for item in raw_list]
 
 
 # ---------- FastAPI wrapper around the agent ----------

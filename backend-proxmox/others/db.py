@@ -18,6 +18,7 @@ def _ensure_db() -> None:
             CREATE TABLE IF NOT EXISTS container_leases (
                 lease_id TEXT PRIMARY KEY,
                 ctid TEXT NOT NULL,
+                sku TEXT,
                 owner_wallet TEXT NOT NULL,
                 network TEXT NOT NULL,
                 status TEXT NOT NULL,
@@ -26,6 +27,11 @@ def _ensure_db() -> None:
             );
             """
         )
+        existing_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(container_leases);").fetchall()
+        }
+        if "sku" not in existing_columns:
+            conn.execute("ALTER TABLE container_leases ADD COLUMN sku TEXT;")
         conn.commit()
 
 
@@ -45,6 +51,7 @@ def record_container_lease(
     *,
     lease_id: str,
     ctid: str,
+    sku: Optional[str],
     owner_wallet: str,
     network: str,
     status: str,
@@ -55,13 +62,14 @@ def record_container_lease(
         conn.execute(
             """
             INSERT OR REPLACE INTO container_leases
-                (lease_id, ctid, owner_wallet, network, status, expires_at, created_at)
+                (lease_id, ctid, sku, owner_wallet, network, status, expires_at, created_at)
             VALUES
-                (:lease_id, :ctid, :owner_wallet, :network, :status, :expires_at, :created_at);
+                (:lease_id, :ctid, :sku, :owner_wallet, :network, :status, :expires_at, :created_at);
             """,
             {
                 "lease_id": lease_id,
                 "ctid": ctid,
+                "sku": sku,
                 "owner_wallet": owner_wallet.lower(),
                 "network": network,
                 "status": status,

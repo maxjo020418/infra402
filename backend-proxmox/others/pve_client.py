@@ -276,3 +276,13 @@ async def get_lxc_status(cfg: PVEConfig, *, vmid: str) -> Dict[str, Any]:
         f"/nodes/{cfg.node}/lxc/{vmid}/status/current",
     )
     return resp.get("data") or {}
+
+
+async def get_node_status(cfg: PVEConfig) -> Dict[str, Any]:
+    """Fetch current node status (CPU, memory, disk, etc.)."""
+    resp = await _request(
+        cfg,
+        "GET",
+        f"/nodes/{cfg.node}/status",
+    )
+    return resp.get("data") or {}

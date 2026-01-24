@@ -108,6 +108,7 @@ async def container(request_body: LeaseRequest, request: Request) -> LeaseRespon
     record_container_lease(
         lease_id=lease_response.leaseId,
         ctid=vmid,
+        sku=request_body.sku,
         owner_wallet=owner_wallet,
         network=NETWORK,
         status=lease_response.status,

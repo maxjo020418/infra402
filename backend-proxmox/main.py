@@ -53,6 +53,7 @@ app.middleware("http")(dynamic_require_payment(PaywallConfig_builder))
 
 app.include_router(routers.lease.router)
 app.include_router(routers.management.router)
+app.include_router(routers.stats.router)
 
 
 if __name__ == "__main__":
