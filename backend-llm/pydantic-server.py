@@ -2,7 +2,6 @@ import os
 import json
 import re
 import html
-import logging
 from dataclasses import dataclass
 from typing import Any, Literal, Dict, Optional
 from pathlib import Path
@@ -20,9 +19,6 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 # env importer
 load_dotenv()
-
-_LOG = logging.getLogger("backend-llm")
-
 LLM_PROVIDER = os.getenv("LLM_PROVIDER")
 match LLM_PROVIDER:
     case "flockio":
@@ -156,17 +152,9 @@ async def render_remote_connect_card(
 
     Use this to present a clickable console link in the chat UI.
     """
-    _LOG.warning(
-        "tool_call render_remote_connect_card protocol=%s host=%s port=%s user=%s region=%s",
-        protocol,
-        host,
-        port,
-        user,
-        region,
-    )
     template = _load_template("remote_link_btn.html")
     connect_url = _require_http_url(connectUrl)
-    rendered = _render_template(
+    return _render_template(
         template,
         {
             "PROTOCOL": _escape_text(protocol),
@@ -179,8 +167,6 @@ async def render_remote_connect_card(
             "NOTE_TEXT": _escape_text(noteText),
         },
     )
-    _LOG.warning("tool_call render_remote_connect_card rendered_len=%d", len(rendered))
-    return rendered
 
 
 @agent.tool
@@ -194,7 +180,6 @@ async def render_lxc_resources_table(
 
     Note: This is a presentational helper; it does not fetch data.
     """
-    _LOG.warning("tool_call render_lxc_resources_table containers=%d updatedAt=%s", len(containers), updatedAt)
     template = _load_template("lxc_resources.html")
 
     start_marker = "<!-- Repeat this <tr> block per container -->"
@@ -226,9 +211,7 @@ async def render_lxc_resources_table(
 
     # Fill header + splice rows back in.
     rebuilt = before + start_marker + "".join(rendered_rows) + end_marker + after
-    rendered = _render_template(rebuilt, {"UPDATED_AT": _escape_text(updatedAt)})
-    _LOG.warning("tool_call render_lxc_resources_table rendered_len=%d", len(rendered))
-    return rendered
+    return _render_template(rebuilt, {"UPDATED_AT": _escape_text(updatedAt)})
 
 
 @agent.tool
@@ -251,9 +234,8 @@ async def render_node_stats_card(
 
     Tip: Pair this with the `get_node_stats` tool.
     """
-    _LOG.warning("tool_call render_node_stats_card node=%s updatedAt=%s", node, updatedAt)
     template = _load_template("node_stats.html")
-    rendered = _render_template(
+    return _render_template(
         template,
         {
             "NODE": _escape_text(node),
@@ -269,8 +251,6 @@ async def render_node_stats_card(
             "DISK_PCT": _escape_text(diskPct),
         },
     )
-    _LOG.warning("tool_call render_node_stats_card rendered_len=%d", len(rendered))
-    return rendered
 
 
 def backend_base_url() -> str:
@@ -716,7 +696,6 @@ async def chat(req: ChatRequest) -> ChatResponse:
     deps = Deps(payment_headers=req.payment_headers)
 
     prompt = build_prompt(req.message, req.history)
-    _LOG.warning("chat request message_len=%d history=%d", len(req.message or ""), len(req.history or []))
 
     try:
         result = await agent.run(
@@ -724,7 +703,6 @@ async def chat(req: ChatRequest) -> ChatResponse:
             deps=deps,
         )
         reply = result.output
-        _LOG.warning("chat response reply_len=%d", len(reply or ""))
         return ChatResponse(reply=reply)
         
     except ClientSidePaymentRequired as exc:
