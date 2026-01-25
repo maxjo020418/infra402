@@ -1,10 +1,7 @@
 import os
 import json
-import re
-import html
 from dataclasses import dataclass
 from typing import Any, Literal, Dict, Optional
-from pathlib import Path
 
 from dotenv import load_dotenv
 import httpx
@@ -82,175 +79,9 @@ agent = Agent(
         "- Call open_container_console to request console access via the management route (ctid; consoleType optional, default vnc). open_lease_console is a backward-compatible alias.\n"
         "- Call list_managed_containers to see existing leases and their VM status.\n"
         "- Call get_node_stats or list_lxc_stats to fetch free usage stats (provide wallet header if required).\n"
-        "- When presenting console links, container lists, or stats, prefer using the HTML rendering tools: render_remote_connect_card, render_lxc_resources_table, render_node_stats_card.\n"
         "- Explain briefly when you submit a lease or run management actions."
     ),
 )
-
-_TEMPLATE_DIR = Path(__file__).resolve().parent / "html_resp_templates"
-
-
-def _load_template(name: str) -> str:
-    path = _TEMPLATE_DIR / name
-    return path.read_text(encoding="utf-8")
-
-
-_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
-
-
-def _render_template(template: str, mapping: Dict[str, str]) -> str:
-    def _replace(match: re.Match[str]) -> str:
-        key = match.group(1)
-        if key not in mapping:
-            raise ValueError(f"Missing template value for {key}")
-        return mapping[key]
-
-    return _PLACEHOLDER_RE.sub(_replace, template)
-
-
-def _escape_text(value: Any) -> str:
-    return html.escape("" if value is None else str(value), quote=False)
-
-
-def _escape_attr(value: Any) -> str:
-    return html.escape("" if value is None else str(value), quote=True)
-
-
-def _require_http_url(url: str) -> str:
-    if not isinstance(url, str) or not url:
-        raise ValueError("connectUrl is required")
-    if not (url.startswith("https://") or url.startswith("http://")):
-        raise ValueError("connectUrl must start with http:// or https://")
-    return url
-
-
-class LxcResourceRow(BaseModel):
-    ctName: str
-    ctId: str
-    node: str
-    statusText: str
-    statusClass: Literal["cc-ok", "cc-warn", "cc-stop"] = "cc-ok"
-    cpuCores: int
-    ramGB: float
-    diskGB: float
-
-
-@agent.tool
-async def render_remote_connect_card(
-    ctx: RunContext[Deps],
-    connectUrl: str,
-    protocol: str = "VNC",
-    buttonLabel: str = "Open console",
-    host: str = "",
-    port: int | str = "",
-    user: str = "",
-    region: str = "",
-    noteText: str = "VNC tickets expire quickly; open this link right away.",
-) -> str:
-    """
-    Render a "Remote Access" card as HTML (see `backend-llm/html_resp_templates/remote_link_btn.html`).
-
-    Use this to present a clickable console link in the chat UI.
-    """
-    template = _load_template("remote_link_btn.html")
-    connect_url = _require_http_url(connectUrl)
-    return _render_template(
-        template,
-        {
-            "PROTOCOL": _escape_text(protocol),
-            "CONNECT_URL": _escape_attr(connect_url),
-            "BUTTON_LABEL": _escape_text(buttonLabel),
-            "HOST": _escape_text(host),
-            "PORT": _escape_text(port),
-            "USER": _escape_text(user),
-            "REGION": _escape_text(region),
-            "NOTE_TEXT": _escape_text(noteText),
-        },
-    )
-
-
-@agent.tool
-async def render_lxc_resources_table(
-    ctx: RunContext[Deps],
-    updatedAt: str,
-    containers: list[LxcResourceRow],
-) -> str:
-    """
-    Render an LXC resources table as HTML (see `backend-llm/html_resp_templates/lxc_resources.html`).
-
-    Note: This is a presentational helper; it does not fetch data.
-    """
-    template = _load_template("lxc_resources.html")
-
-    start_marker = "<!-- Repeat this <tr> block per container -->"
-    end_marker = "<!-- (Optional) Add more rows... -->"
-    if start_marker not in template or end_marker not in template:
-        raise ValueError("Template markers not found in lxc_resources.html")
-
-    before, rest = template.split(start_marker, 1)
-    row_block, after = rest.split(end_marker, 1)
-
-    rendered_rows: list[str] = []
-    for row in containers:
-        rendered_rows.append(
-            _render_template(
-                row_block,
-                {
-                    "CT_NAME": _escape_text(row.ctName),
-                    "CT_ID": _escape_text(row.ctId),
-                    "NODE": _escape_text(row.node),
-                    "STATUS_CLASS": _escape_attr(row.statusClass),
-                    "STATUS_TEXT": _escape_text(row.statusText),
-                    "CPU_CORES": _escape_text(row.cpuCores),
-                    "RAM_GB": _escape_text(row.ramGB),
-                    "DISK_GB": _escape_text(row.diskGB),
-                    "UPDATED_AT": _escape_text(updatedAt),  # present in header (no-op here)
-                },
-            )
-        )
-
-    # Fill header + splice rows back in.
-    rebuilt = before + start_marker + "".join(rendered_rows) + end_marker + after
-    return _render_template(rebuilt, {"UPDATED_AT": _escape_text(updatedAt)})
-
-
-@agent.tool
-async def render_node_stats_card(
-    ctx: RunContext[Deps],
-    node: str,
-    updatedAt: str,
-    cpuUsed: str,
-    cpuTotal: str,
-    cpuPct: str,
-    memUsed: str,
-    memTotal: str,
-    memPct: str,
-    diskUsed: str,
-    diskTotal: str,
-    diskPct: str,
-) -> str:
-    """
-    Render a node CPU/RAM/Disk usage card as HTML (see `backend-llm/html_resp_templates/node_stats.html`).
-
-    Tip: Pair this with the `get_node_stats` tool.
-    """
-    template = _load_template("node_stats.html")
-    return _render_template(
-        template,
-        {
-            "NODE": _escape_text(node),
-            "UPDATED_AT": _escape_text(updatedAt),
-            "CPU_USED": _escape_text(cpuUsed),
-            "CPU_TOTAL": _escape_text(cpuTotal),
-            "CPU_PCT": _escape_text(cpuPct),
-            "MEM_USED": _escape_text(memUsed),
-            "MEM_TOTAL": _escape_text(memTotal),
-            "MEM_PCT": _escape_text(memPct),
-            "DISK_USED": _escape_text(diskUsed),
-            "DISK_TOTAL": _escape_text(diskTotal),
-            "DISK_PCT": _escape_text(diskPct),
-        },
-    )
 
 
 def backend_base_url() -> str:
@@ -540,7 +371,7 @@ async def renew_lease(
     if not confirmPurchase:
         estimate = _estimate_price(runtimeMinutes)
         raise ValueError(
-            f"Please confirm the renewal purchase of {estimate}."
+            f"Please confirm the renewal purchase ({estimate}) and re-run with confirmPurchase=True."
         )
 
     payload = RenewLeaseRequest(runtimeMinutes=runtimeMinutes)
