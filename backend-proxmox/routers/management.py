@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
-from urllib.parse import urlsplit
 
 from others.pve_client import (
     PVEError,
@@ -66,14 +65,13 @@ async def console(ctid: str, body: ConsoleRequest, request: Request, response: R
             detail=f"PVE error: {exc}",
         ) from exc
 
-    console_url = build_console_url(cfg, vmid=ctid, vncticket=data.get("ticket"), port=data.get("port"))
+    console_url = build_console_url(cfg, vmid=ctid, vncticket=data.get("ticket"))
     auth_cookie = access_ticket.get("ticket")
     if auth_cookie:
-        parsed_console = urlsplit(cfg.console_host if "://" in cfg.console_host else f"https://{cfg.console_host}")
         response.set_cookie(
             "PVEAuthCookie",
             auth_cookie,
-            domain=(parsed_console.hostname or cfg.console_host),
+            domain=(cfg.host.split("//")[-1].split(":")[0]),
             secure=True,
             httponly=True,
             samesite="lax",
