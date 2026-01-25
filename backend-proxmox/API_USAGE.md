@@ -66,6 +66,10 @@ Runs a shell command inside the container.
 
 Retrieves a VNC ticket and connection details.
 
+Notes:
+- The returned `consoleUrl` is time-sensitive (VNC tickets expire quickly); open it right away.
+- `PVE_CONSOLE_HOST` should be the host users can reach in their browser (it may differ from `PVE_HOST`, which is used for backend API calls).
+
 **Body:**
 ```json
 {

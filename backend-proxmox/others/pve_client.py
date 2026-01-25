@@ -236,18 +236,30 @@ async def create_vnc_proxy(cfg: PVEConfig, *, vmid: str) -> Dict[str, Any]:
     return data
 
 
-def build_console_url(cfg: PVEConfig, *, vmid: str, vncticket: str) -> str:
-    """Build a Proxmox noVNC URL that auto-connects with the given ticket."""
+def build_console_url(cfg: PVEConfig, *, vmid: str, vncticket: str, port: int | str | None = None) -> str:
+    """Build a Proxmox noVNC URL that auto-connects with the given ticket.
+
+    Note: Proxmox's VNC WebSocket endpoint requires both `port` and `vncticket`.
+    """
     target_host = cfg.console_host
     parsed = urlsplit(target_host if "://" in target_host else f"https://{target_host}")
     scheme = parsed.scheme or "https"
-    port = parsed.port or 8006
+    pve_port = parsed.port or 8006
     hostname = parsed.hostname or target_host
-    base = f"{scheme}://{hostname}:{port}"
-    return (
+    base = f"{scheme}://{hostname}:{pve_port}"
+
+    qs = (
         f"{base}/?console=lxc&novnc=1&vmid={vmid}"
         f"&node={cfg.node}&resize=scale&vncticket={quote(vncticket, safe='')}"
     )
+    if port is None:
+        return qs
+
+    # `path` is consumed by the embedded noVNC client to locate the WebSocket endpoint.
+    # Including both `port` and `path` makes the URL work even when the page cannot
+    # perform an authenticated vncproxy lookup.
+    vnc_path = f"/api2/json/nodes/{cfg.node}/lxc/{vmid}/vncwebsocket?port={port}&vncticket={vncticket}"
+    return f"{qs}&port={port}&path={quote(vnc_path, safe='')}"
 
 
 async def stop_lxc(cfg: PVEConfig, *, vmid: str) -> str:
